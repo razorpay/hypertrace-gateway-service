@@ -1,17 +1,20 @@
 package org.hypertrace.gateway.service;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ServiceException;
 import com.typesafe.config.Config;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import io.micrometer.core.instrument.Counter;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.hypertrace.core.attribute.service.client.AttributeServiceClient;
 import org.hypertrace.core.attribute.service.client.config.AttributeServiceClientConfig;
 import org.hypertrace.core.query.service.client.QueryServiceClient;
 import org.hypertrace.core.query.service.client.QueryServiceConfig;
+import org.hypertrace.core.serviceframework.metrics.PlatformMetricsRegistry;
 import org.hypertrace.entity.query.service.client.EntityQueryServiceClient;
 import org.hypertrace.entity.service.client.config.EntityServiceClientConfig;
 import org.hypertrace.gateway.service.baseline.BaselineService;
@@ -57,6 +60,11 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
   private static final String QUERY_SERVICE_CONFIG_KEY = "query.service.config";
   private static final String REQUEST_TIMEOUT_CONFIG_KEY = "request.timeout";
   private static final int DEFAULT_REQUEST_TIMEOUT_MILLIS = 10000;
+
+  private Counter requestStatusErrorCounter;
+  private Counter requestStatusSuccessCounter;
+  private static final String SERVICE_REQUESTS_STATUS_COUNTER =
+      "hypertrace.gateway.service.requests.status";
 
   private final TracesService traceService;
   private final SpanService spanService;
@@ -118,6 +126,16 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
             entityIdColumnsConfigs);
     this.logEventsService =
         new LogEventsService(queryServiceClient, qsRequestTimeout, attributeMetadataProvider);
+    initMetrics();
+  }
+
+  private void initMetrics() {
+    requestStatusErrorCounter =
+        PlatformMetricsRegistry.registerCounter(
+            SERVICE_REQUESTS_STATUS_COUNTER, ImmutableMap.of("error", "true"));
+    requestStatusSuccessCounter =
+        PlatformMetricsRegistry.registerCounter(
+            SERVICE_REQUESTS_STATUS_COUNTER, ImmutableMap.of("error", "false"));
   }
 
   private static int getRequestTimeoutMillis(Config config) {
@@ -136,6 +154,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -151,8 +170,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
       TracesResponse response = traceService.getTracesByFilter(requestContext, request);
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling traces request: {}", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -165,6 +186,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -179,8 +201,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
       SpansResponse response = spanService.getSpansByFilter(context, request);
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling spans request: {}", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -195,6 +219,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -225,8 +250,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
 
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling entities request: {}.", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -241,6 +268,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -259,8 +287,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
       }
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling UpdateEntityRequest: {}.", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -289,8 +319,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
       LOG.debug("Received response: {}", response);
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling bulkUpdateEntities: {}.", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -301,6 +333,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -318,8 +351,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
 
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling entities request: {}.", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -329,6 +364,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -343,8 +379,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
                   .getRequestHeaders());
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling explore request: {}", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
@@ -355,6 +393,7 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
     Optional<String> tenantId =
         org.hypertrace.core.grpcutils.context.RequestContext.CURRENT.get().getTenantId();
     if (tenantId.isEmpty()) {
+      requestStatusErrorCounter.increment();
       responseObserver.onError(new ServiceException("Tenant id is missing in the request."));
       return;
     }
@@ -369,8 +408,10 @@ public class GatewayServiceImpl extends GatewayServiceGrpc.GatewayServiceImplBas
       LogEventsResponse response = logEventsService.getLogEventsByFilter(context, request);
       responseObserver.onNext(response);
       responseObserver.onCompleted();
+      requestStatusSuccessCounter.increment();
     } catch (Exception e) {
       LOG.error("Error while handling logEvents request: {}", request, e);
+      requestStatusErrorCounter.increment();
       responseObserver.onError(e);
     }
   }
