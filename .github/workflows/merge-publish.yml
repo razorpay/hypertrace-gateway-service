@@ -9,7 +9,7 @@ jobs:
   merge-publish:
     runs-on: ubuntu-20.04
     steps:
-       # Set fetch-depth: 0 to fetch commit history and tags for use in version calculation
+       # Set fetch-depth: 0 to fetch commit history and tags for use in version calculation k
       - name: Check out code
         uses: actions/checkout@v2.3.4
         with:
