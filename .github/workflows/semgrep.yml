@@ -15,7 +15,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   workflow_status:
-    runs-on: [ self-hosted ]
+    runs-on: [ubuntu-20.04
     name: Update Status Check
     needs: [ semgrep ]
     if: always()
