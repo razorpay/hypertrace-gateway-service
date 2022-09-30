@@ -1,6 +1,6 @@
 # Gateway Service
 
-An entry service that acts as a single access point for querying data from other services like entity-service, query-service, Attribute service. 
+An entry service that acts as a single access point for querying d.ata from other services like entity-service, query-service, Attribute service. 
 
 ## Description
 
