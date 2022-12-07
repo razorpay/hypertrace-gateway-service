@@ -461,6 +461,11 @@ public class QueryAndGatewayDtoConverter {
       String spacesAttributeId,
       org.hypertrace.gateway.service.v1.common.Filter providedFilter) {
 
+    if (timestampAttributeId.equals("SERVICE.startTime")
+        || timestampAttributeId.equals("API.startTime")) {
+      timestampAttributeId = timestampAttributeId.concat("Filter");
+    }
+
     Filter.Builder compositeFilter = Filter.newBuilder().setOperator(Operator.AND);
     Filter convertedProvidedFilter =
         isNonDefaultFilter(providedFilter)
